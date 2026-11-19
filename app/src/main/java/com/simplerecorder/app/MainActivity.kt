@@ -1,17 +1,15 @@
 package com.simplerecorder.app
 
 import android.app.Activity
-import android.app.AlertDialog
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.res.Configuration
+import android.content.*
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -19,40 +17,32 @@ import android.widget.*
 class MainActivity : Activity() {
 
     private lateinit var localStatus: TextView
-    private lateinit var remoteStatus: TextView
-
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
 
-    private val requestCode = 1001
+    private val captureCode = 1001
+    private val photoCode = 1002
+    private val notificationCode = 1003
+
     private var receiverRegistered = false
 
-    private val isDark: Boolean
-        get() = resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK ==
-            Configuration.UI_MODE_NIGHT_YES
+    private val green = Color.rgb(139, 195, 74)
+    private val darkGreen = Color.rgb(85, 139, 47)
+    private val black = Color.BLACK
+    private val white = Color.WHITE
 
-    private val backgroundColor: Int
-        get() = if (isDark) Color.rgb(18, 18, 22)
-                else Color.rgb(245, 246, 250)
-
-    private val cardColor: Int
-        get() = if (isDark) Color.rgb(35, 35, 43)
-                else Color.WHITE
-
-    private val textColor: Int
-        get() = if (isDark) Color.WHITE
-                else Color.rgb(25, 25, 35)
-
-    private val secondaryColor: Int
-        get() = if (isDark) Color.LTGRAY
-                else Color.DKGRAY
-
-    private val accentColor = Color.rgb(68, 138, 255)
+    private val prefs by lazy {
+        getSharedPreferences("nazim_setup", MODE_PRIVATE)
+    }
 
     private val statusReceiver = object : BroadcastReceiver() {
 
-        override fun onReceive(context: Context?, intent: Intent?) {
+        override fun onReceive(
+            context: Context?,
+            intent: Intent?
+        ) {
+
+            if (!::localStatus.isInitialized) return
 
             val recording = intent?.getBooleanExtra(
                 RecordingService.EXTRA_RECORDING,
@@ -77,224 +67,347 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.statusBarColor = backgroundColor
-        window.navigationBarColor = backgroundColor
+        setupSystemBars()
 
-        if (!isDark) {
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        if (prefs.getBoolean("onboarding_complete", false)) {
+            showRecordingScreen()
+        } else {
+            showWelcomeScreen()
         }
-
-        buildInterface()
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
 
-    private fun roundedBackground(color: Int): GradientDrawable {
+    private fun setupSystemBars() {
+
+        window.statusBarColor = green
+        window.navigationBarColor = green
+
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+            View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+    }
+
+    private fun background(): GradientDrawable {
+
         return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(18).toFloat()
+            setColor(green)
         }
     }
 
-    private fun buildInterface() {
+    private fun createRoot(): LinearLayout {
 
-        val root = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
+
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(backgroundColor)
-            setPadding(dp(22), dp(30), dp(22), dp(20))
+
+            gravity = Gravity.CENTER
+
+            setBackground(background())
+
+            setPadding(
+                dp(28),
+                dp(30),
+                dp(28),
+                dp(30)
+            )
         }
+    }
 
-        val scroll = ScrollView(this)
+    private fun title(value: String): TextView {
 
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        return TextView(this).apply {
 
-        val title = TextView(this).apply {
-            text = "NAZIM"
-            textSize = 30f
+            text = value
+
+            textSize = 34f
+
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(textColor)
+
+            setTextColor(black)
+
             gravity = Gravity.CENTER
         }
+    }
 
-        val subtitle = TextView(this).apply {
-            text = "Your screen. Your control."
-            textSize = 14f
-            setTextColor(secondaryColor)
+    private fun description(value: String): TextView {
+
+        return TextView(this).apply {
+
+            text = value
+
+            textSize = 17f
+
+            setTextColor(black)
+
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(30))
+
+            setLineSpacing(dp(5).toFloat(), 1f)
+
+            setPadding(
+                dp(5),
+                dp(20),
+                dp(5),
+                dp(25)
+            )
         }
+    }
 
-        content.addView(title)
-        content.addView(subtitle)
+    private fun actionButton(value: String): Button {
 
-        // LOCAL RECORDING
+        return Button(this).apply {
 
-        content.addView(sectionTitle("📹  LOCAL RECORDING"))
+            text = value
 
-        val localCard = createCard()
+            textSize = 15f
 
-        localStatus = TextView(this).apply {
-            text = "Ready to record"
-            textSize = 14f
-            setTextColor(secondaryColor)
-            setPadding(0, 0, 0, dp(18))
+            isAllCaps = false
+
+            typeface = Typeface.DEFAULT_BOLD
+
+            setTextColor(black)
+
+            background = GradientDrawable().apply {
+
+                setColor(Color.rgb(190, 225, 150))
+
+                cornerRadius = dp(12).toFloat()
+            }
+
+            layoutParams = LinearLayout.LayoutParams(
+                -1,
+                dp(58)
+            ).apply {
+
+                topMargin = dp(12)
+            }
         }
+    }
 
-        startButton = createButton("START RECORDING")
+    // SCREEN 1: WELCOME
 
-        startButton.setOnClickListener {
-            startRecording()
-        }
+    private fun showWelcomeScreen() {
 
-        stopButton = createButton("STOP RECORDING").apply {
-            isEnabled = false
-        }
+        val root = createRoot()
 
-        stopButton.setOnClickListener {
-            stopRecording()
-        }
+        val heading = title("NAZIM")
 
-        localCard.addView(localStatus)
-        localCard.addView(startButton)
-        localCard.addView(stopButton)
-
-        content.addView(
-            localCard,
-            sectionMargins()
+        val subtitle = description(
+            "More Than a Connection.\n\n" +
+            "Discover, connect and experience " +
+            "something different."
         )
 
-        // REMOTE SCREEN SHARING
+        val button = actionButton("GET STARTED")
 
-        content.addView(
-            sectionTitle("🌐  REMOTE SCREEN SHARING")
-        )
+        button.setOnClickListener {
 
-        val remoteCard = createCard()
-
-        val remoteDescription = TextView(this).apply {
-            text = "Share your screen with the Nazim developer dashboard. You remain in control and can stop sharing at any time."
-            textSize = 14f
-            setTextColor(secondaryColor)
-            setPadding(0, 0, 0, dp(18))
+            showNotificationsScreen()
         }
-
-        remoteStatus = TextView(this).apply {
-            text = "Remote sharing is not configured yet"
-            textSize = 14f
-            setTextColor(secondaryColor)
-            setPadding(0, 0, 0, dp(18))
-        }
-
-        val shareButton = createButton("SHARE MY SCREEN")
-
-        shareButton.setOnClickListener {
-            showRemoteInformation()
-        }
-
-        val stopSharingButton = createButton("STOP SHARING").apply {
-            isEnabled = false
-        }
-
-        remoteCard.addView(remoteDescription)
-        remoteCard.addView(remoteStatus)
-        remoteCard.addView(shareButton)
-        remoteCard.addView(stopSharingButton)
-
-        content.addView(
-            remoteCard,
-            sectionMargins()
-        )
-
-        val footer = TextView(this).apply {
-            text = "NAZIM  •  Secure Screen Sharing"
-            textSize = 12f
-            setTextColor(secondaryColor)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(25), 0, dp(15))
-        }
-
-        content.addView(footer)
-
-        scroll.addView(content)
 
         root.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                -1,
-                0,
-                1f
-            )
+            heading,
+            LinearLayout.LayoutParams(-1, -2)
         )
+
+        root.addView(subtitle)
+
+        root.addView(button)
 
         setContentView(root)
     }
 
-    private fun sectionTitle(value: String): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(textColor)
-            setPadding(0, dp(18), 0, dp(14))
+    // SCREEN 2: NOTIFICATIONS
+
+    private fun showNotificationsScreen() {
+
+        val root = createRoot()
+
+        root.addView(title("STAY CONNECTED"))
+
+        root.addView(
+            description(
+                "Stay updated with messages, invitations " +
+                "and special moments.\n\n" +
+                "Allow notifications so you don't miss " +
+                "important updates from Nazim."
+            )
+        )
+
+        val button = actionButton("ENABLE NOTIFICATIONS")
+
+        button.setOnClickListener {
+
+            if (Build.VERSION.SDK_INT >= 33) {
+
+                if (
+                    checkSelfPermission(
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+
+                    requestPermissions(
+                        arrayOf(
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ),
+                        notificationCode
+                    )
+
+                } else {
+
+                    showPhotosScreen()
+                }
+
+            } else {
+
+                showPhotosScreen()
+            }
+        }
+
+        root.addView(button)
+
+        setContentView(root)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        if (requestCode == notificationCode) {
+
+            showPhotosScreen()
         }
     }
 
-    private fun createCard(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(20))
-            background = roundedBackground(cardColor)
+    // SCREEN 3: PHOTOS AND VIDEOS
+
+    private fun showPhotosScreen() {
+
+        val root = createRoot()
+
+        root.addView(title("SHARE YOUR MOMENTS"))
+
+        root.addView(
+            description(
+                "Choose your favourite pictures and " +
+                "videos to share during your Nazim experience."
+            )
+        )
+
+        val button = actionButton("CHOOSE PHOTOS & VIDEOS")
+
+        button.setOnClickListener {
+
+            openPhotoPicker()
         }
+
+        val continueButton = actionButton("CONTINUE")
+
+        continueButton.setOnClickListener {
+
+            showInteractiveScreen()
+        }
+
+        root.addView(button)
+
+        root.addView(continueButton)
+
+        setContentView(root)
     }
 
-    private fun createButton(label: String): Button {
-        return Button(this).apply {
-            text = label
-            textSize = 13f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = roundedBackground(accentColor)
+    private fun openPhotoPicker() {
 
-            val params = LinearLayout.LayoutParams(
-                -1,
-                dp(52)
+        try {
+
+            val intent = if (Build.VERSION.SDK_INT >= 33) {
+
+                Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                    type = "*/*"
+                }
+
+            } else {
+
+                Intent(Intent.ACTION_GET_CONTENT).apply {
+
+                    type = "*/*"
+
+                    addCategory(Intent.CATEGORY_OPENABLE)
+
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                }
+            }
+
+            startActivityForResult(
+                intent,
+                photoCode
             )
 
-            params.bottomMargin = dp(10)
-            layoutParams = params
+        } catch (e: Exception) {
+
+            Toast.makeText(
+                this,
+                "Unable to open media picker",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
-    private fun sectionMargins(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            -1,
-            -2
-        ).apply {
-            bottomMargin = dp(15)
-        }
-    }
+    // SCREEN 4: INTERACTIVE EXPERIENCES
 
-    private fun showRemoteInformation() {
+    private fun showInteractiveScreen() {
 
-        AlertDialog.Builder(this)
-            .setTitle("Nazim Remote Sharing")
-            .setMessage(
-                "Remote screen sharing is coming in a future update.\n\n" +
-                "When available, you will be able to explicitly " +
-                "approve screen sharing through Android's official " +
-                "permission prompt.\n\n" +
-                "Nothing is being shared right now."
+        val root = createRoot()
+
+        root.addView(
+            title("INTERACTIVE EXPERIENCES")
+        )
+
+        root.addView(
+            description(
+                "Get ready for a more interactive Nazim " +
+                "experience! Enjoy screen sharing, explore " +
+                "exciting activities and make your online " +
+                "interactions even more engaging.\n\n" +
+
+                "Screen sharing lets you share what's " +
+                "happening on your screen during supported " +
+                "experiences. You'll always have the opportunity " +
+                "to review and confirm before sharing begins, " +
+                "and you can stop whenever you wish.\n\n" +
+
+                "Android will display its official recording " +
+                "confirmation before screen sharing begins.\n\n" +
+
+                "Your experience, your choice. You're always " +
+                "in control of when you share your screen."
             )
-            .setPositiveButton("GOT IT", null)
-            .show()
+        )
+
+        val button = actionButton("CONTINUE")
+
+        button.setOnClickListener {
+
+            requestScreenCapture()
+        }
+
+        root.addView(button)
+
+        setContentView(root)
     }
 
-    private fun startRecording() {
+    // ANDROID OFFICIAL SCREEN CAPTURE CONSENT
+
+    private fun requestScreenCapture() {
 
         val manager = getSystemService(
             MEDIA_PROJECTION_SERVICE
@@ -302,45 +415,150 @@ class MainActivity : Activity() {
 
         startActivityForResult(
             manager.createScreenCaptureIntent(),
-            requestCode
+            captureCode
         )
     }
 
-    @Deprecated("Deprecated Android API")
+    @Deprecated("Activity result callback")
     override fun onActivityResult(
         requestCode: Int,
         resultCode: Int,
         data: Intent?
     ) {
-        super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == this.requestCode) {
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
 
-            if (resultCode == RESULT_OK && data != null) {
+        when (requestCode) {
 
-                val intent = Intent(
-                    this,
-                    RecordingService::class.java
-                ).apply {
-                    action = RecordingService.ACTION_START
+            photoCode -> {
 
-                    putExtra(
-                        RecordingService.EXTRA_RESULT_CODE,
-                        resultCode
-                    )
+                if (resultCode == RESULT_OK) {
 
-                    putExtra(
-                        RecordingService.EXTRA_DATA,
+                    showInteractiveScreen()
+                }
+            }
+
+            captureCode -> {
+
+                prefs.edit()
+                    .putBoolean("onboarding_complete", true)
+                    .apply()
+
+                showRecordingScreen()
+
+                if (resultCode == RESULT_OK && data != null) {
+
+                    startRecordingService(
+                        resultCode,
                         data
                     )
+
+                } else {
+
+                    localStatus.text =
+                        "Screen capture permission not granted"
                 }
-
-                startForegroundService(intent)
-
-            } else {
-                localStatus.text = "Recording permission denied"
             }
         }
+    }
+
+    // SCREEN 5: CLEAN RECORDING INTERFACE
+
+    private fun showRecordingScreen() {
+
+        setupSystemBars()
+
+        val root = createRoot()
+
+        val heading = title("NAZIM")
+
+        val status = TextView(this).apply {
+
+            text = "Ready to record"
+
+            textSize = 18f
+
+            setTextColor(black)
+
+            gravity = Gravity.CENTER
+
+            setPadding(
+                0,
+                dp(20),
+                0,
+                dp(25)
+            )
+        }
+
+        localStatus = status
+
+        startButton = actionButton("START RECORDING")
+
+        startButton.setOnClickListener {
+
+            requestScreenCapture()
+        }
+
+        stopButton = actionButton("STOP RECORDING")
+
+        stopButton.isEnabled = false
+
+        stopButton.setOnClickListener {
+
+            stopRecording()
+        }
+
+        root.addView(
+            heading,
+            LinearLayout.LayoutParams(-1, -2)
+        )
+
+        root.addView(status)
+
+        root.addView(startButton)
+
+        root.addView(stopButton)
+
+        val spacer = View(this)
+
+        root.addView(
+            spacer,
+            LinearLayout.LayoutParams(1, 0, 1f)
+        )
+
+        setContentView(root)
+    }
+
+    private fun startRecordingService(
+        resultCode: Int,
+        data: Intent
+    ) {
+
+        val intent = Intent(
+            this,
+            RecordingService::class.java
+        ).apply {
+
+            action = RecordingService.ACTION_START
+
+            putExtra(
+                RecordingService.EXTRA_RESULT_CODE,
+                resultCode
+            )
+
+            putExtra(
+                RecordingService.EXTRA_DATA,
+                data
+            )
+        }
+
+        startForegroundService(intent)
+
+        localStatus.text = "Starting recording..."
     }
 
     private fun stopRecording() {
@@ -349,25 +567,37 @@ class MainActivity : Activity() {
             this,
             RecordingService::class.java
         ).apply {
+
             action = RecordingService.ACTION_STOP
         }
 
         startService(intent)
     }
 
+    // RECORDING STATUS
+
     override fun onStart() {
+
         super.onStart()
 
-        val filter = IntentFilter(RecordingService.ACTION_STATUS)
+        val filter = IntentFilter(
+            RecordingService.ACTION_STATUS
+        )
 
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
+        if (Build.VERSION.SDK_INT >= 33) {
+
             registerReceiver(
                 statusReceiver,
                 filter,
                 Context.RECEIVER_NOT_EXPORTED
             )
+
         } else {
-            registerReceiver(statusReceiver, filter)
+
+            registerReceiver(
+                statusReceiver,
+                filter
+            )
         }
 
         receiverRegistered = true
@@ -376,7 +606,9 @@ class MainActivity : Activity() {
     override fun onStop() {
 
         if (receiverRegistered) {
+
             unregisterReceiver(statusReceiver)
+
             receiverRegistered = false
         }
 
