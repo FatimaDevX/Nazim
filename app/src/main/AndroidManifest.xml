@@ -1,33 +1,35 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
-    <application
-        android:allowBackup="false"
-        android:label="Nazim"
-        android:theme="@style/AppTheme"
-        android:supportsRtl="true">
+<uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+<application
+    android:allowBackup="false"
+    android:label="Nazim"
+    android:theme="@style/AppTheme"
+    android:supportsRtl="true">
 
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+    <activity
+        android:name=".MainActivity"
+        android:exported="true">
 
-        </activity>
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
 
-        <service
-            android:name=".RecordingService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
+    </activity>
 
-    </application>
+    <service
+        android:name=".RecordingService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection" />
+
+</application>
 
 </manifest>
